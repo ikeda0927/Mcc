@@ -27,7 +27,7 @@ int main(int argc, char **argv){
 			continue;
 		}
 
-		fprintf(stderr,"error:Unexpected character\n");
+		fprintf(stderr,"error:Unexpected character '%c'\n",*p);
 		return 1;
 	}
 
