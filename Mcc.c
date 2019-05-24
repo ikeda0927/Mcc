@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+//where to tokenize
 //values representing the type of token
 enum{
 	TK_NUM = 256,	//integer token
@@ -60,6 +61,22 @@ void tokenize(){
 			continue;
 		}
 
+		if(*p=='*' || *p=='/'){
+			tokens[i].ty = *p;
+			tokens[i].input = p;
+			i++;
+			p++;
+			continue;
+		}
+
+		if(*p=='(' || *p==')'){
+			tokens[i].ty = *p;
+			tokens[i].input = p;
+			i++;
+			p++;
+			continue;
+		}
+
 		if(isdigit(*p)){
 			tokens[i].ty = TK_NUM;
 			tokens[i].input = p;
@@ -76,6 +93,124 @@ void tokenize(){
 	
 }
 
+
+//wher to parse
+enum{
+	ND_NUM = 256,
+};
+
+typedef struct Node{
+	int ty;
+	struct Node *lhs;
+	struct Node *rhs;
+	int val;
+}Node;
+
+Node *new_node(int ty, Node *lhs, Node *rhs){
+	Node *node = malloc(sizeof(Node));
+	node->ty = ty;
+	node->lhs = lhs;
+	node->rhs = rhs;
+	return node;
+}
+
+Node *new_node_num(int val){
+	Node *node = malloc(sizeof(Node));
+	node->ty = ND_NUM;
+	node->val = val;
+	return node;
+}
+
+int pos = 0;
+int consume(int ty){
+	if(tokens[pos].ty != ty)
+		return 0;
+	pos++;
+	return 1;
+}
+
+Node *mul();
+Node *term();
+
+Node *expr(){
+	Node *node = mul();
+
+	for(;;){
+		if(consume('+'))
+			node = new_node('+', node, mul());
+
+		else if(consume('-'))
+			node = new_node('-', node, mul());
+		
+		else
+			return node;
+	}
+}
+
+Node *mul(){
+	Node *node = term();
+
+	for(;;){
+		if(consume('*'))
+			node = new_node('*', node, term());
+
+		else if(consume('/'))
+			node = new_node('/', node, term());
+		
+		else
+			return node;
+	}
+}
+
+Node *term(){
+	if(consume('(')){
+		Node *node = expr();
+		if(!consume(')'))
+			error_at(tokens[pos].input, 
+				"error:open parenthesis has no corresponding closing parenthesis");
+		return node;
+	}
+
+	if(tokens[pos].ty == TK_NUM)
+		return new_node_num(tokens[pos++].val);
+
+	error_at(tokens[pos].input, "this is not number or open parenthesis");
+}
+
+void gen(Node *node){
+	if(node->ty == ND_NUM){
+		printf("	push %d\n", node->val);
+		return;
+	}
+
+	gen(node->lhs);
+	gen(node->rhs);
+
+	printf("	pop rdi\n");
+	printf("	pop rax\n");
+
+	switch(node->ty){
+		case '+':
+			printf("	add rax, rdi\n");
+			break;
+		case '-':
+			printf("	sub rax, rdi\n");
+			break;
+		case '*':
+			printf("	imul rdi\n");
+			break;
+		case '/':
+			printf("	cqo\n");
+			printf("	idiv rdi\n");
+
+	}
+
+	printf("	push rax\n");
+
+}
+
+
+
 int main(int argc, char **argv){
 	if(argc != 2){
 		error("error:incorrect number of arguments");
@@ -83,40 +218,16 @@ int main(int argc, char **argv){
 	};
 
 	user_input = argv[1];
-	tokenize();
+	tokenize();		//tokenizing
+	Node *node = expr();	//parsing
 
 	printf(".intel_syntax noprefix\n");
 	printf(".global main\n");
 	printf("main:\n");
 
-	if(tokens[0].ty != TK_NUM)
-		error_at(tokens[0].input, "error:beginning of argument is not number");
-	printf("	mov rax, %ld\n",tokens[0].val);
+	gen(node);
 
-	int i = 1;
-	while(tokens[i].ty != TK_EOF){
-		if(tokens[i].ty == '+'){
-			i++;
-			if(tokens[i].ty != TK_NUM)
-				error_at(tokens[i].input, "error:this is not number");
-			printf("	add rax, %ld\n",tokens[i].val);
-			i++;
-			continue;
-		}
-
-		if(tokens[i].ty == '-'){
-			i++;
-			if(tokens[i].ty != TK_NUM)
-				error_at(tokens[i].input, "error:this is not number");
-			printf("	sub rax, %ld\n",tokens[i].val);
-			i++;
-			continue;
-		}
-
-		
-		error_at(tokens[i].input ,"error:Unexpected token");
-	}
-
+	printf("	pop rax\n");
 	printf("	ret\n");
 	return 0;
 }
